@@ -264,7 +264,18 @@ static void lcm_pannel_reconfig_blk(struct lcm *ctx)
 
 	bl_tb0[1] = (reg_level>>8)&0xf;
 	bl_tb0[2] = (reg_level)&0xff;
-	lcm_dcs_write(ctx,bl_tb0,ARRAY_SIZE(bl_tb0));
+	
+	/* --- start: range-aware brightness handling (from VNX) --- */
+	lcm_dcs_write_seq_static(ctx, 0xFE, 0x00); /* page 0 */
+	if (bl_level >= 1200) {
+		lcm_dcs_write_seq_static(ctx, 0x51, 0x0F, 0xFE);
+	} else if (bl_level >= 800 && bl_level < 1200) {
+		lcm_dcs_write_seq_static(ctx, 0x51, 0x08, 0x00);
+		lcm_dcs_write_seq_static(ctx, 0x51, 0x01, 0x55);
+	}
+	lcm_dcs_write_seq_static(ctx, 0xFE, 0x00);
+	/* --- end: range-aware brightness handling --- */
+lcm_dcs_write(ctx,bl_tb0,ARRAY_SIZE(bl_tb0));
 
 }
 
@@ -759,7 +770,34 @@ static int lcm_setbacklight_cmdq(void *dsi, dcs_write_gce cb,
 			bl_tb0[2] = 0x03;
 		}
 		cb(dsi, handle, set_page00_tb, ARRAY_SIZE(set_page00_tb));
-		cb(dsi, handle, bl_tb0, ARRAY_SIZE(bl_tb0));
+		
+	/* --- start: range-aware brightness handling (from VNX) --- */
+	char set_page00_tb2[] = {0xFE, 0x00};
+	char esd_page_tb2[] = {0xFE, 0x20};
+	char seq_high_tb[] = {0x51, 0x0F, 0xFE};
+	char seq_mid1_tb[] = {0x51, 0x08, 0x00};
+	char seq_mid2_tb[] = {0x51, 0x01, 0x55};
+
+	pr_info("[rm692h5] range-handle: bl_level=%u\n", bl_level);
+
+	/* send page select if reading_base is used (keep behavior consistent with file) */
+	if (reading_base)
+		cb(dsi, handle, set_page00_tb2, ARRAY_SIZE(set_page00_tb2));
+
+	if (bl_level >= 1200) {
+		/* high range special mapping */
+		cb(dsi, handle, seq_high_tb, ARRAY_SIZE(seq_high_tb));
+	} else if (bl_level >= 800 && bl_level < 1200) {
+		/* mid range mapping to avoid black crush */
+		cb(dsi, handle, seq_mid1_tb, ARRAY_SIZE(seq_mid1_tb));
+		cb(dsi, handle, seq_mid2_tb, ARRAY_SIZE(seq_mid2_tb));
+	}
+
+	if (reading_base)
+		cb(dsi, handle, esd_page_tb2, ARRAY_SIZE(esd_page_tb2));
+	/* --- end: range-aware brightness handling --- */
+
+cb(dsi, handle, bl_tb0, ARRAY_SIZE(bl_tb0));
 
 		return 0;
 	}
@@ -1800,4 +1838,3 @@ module_exit(rm692h5_boe_rm_lcm_driver_exit);
 MODULE_AUTHOR("Yi-Lun Wang <Yi-Lun.Wang@mediatek.com>");
 MODULE_DESCRIPTION("rm692h5 BOE RM CMD LCD Panel Driver");
 MODULE_LICENSE("GPL v2");
-
