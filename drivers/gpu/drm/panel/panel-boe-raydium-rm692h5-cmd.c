@@ -1800,3 +1800,4 @@ module_exit(rm692h5_boe_rm_lcm_driver_exit);
 MODULE_AUTHOR("Yi-Lun Wang <Yi-Lun.Wang@mediatek.com>");
 MODULE_DESCRIPTION("rm692h5 BOE RM CMD LCD Panel Driver");
 MODULE_LICENSE("GPL v2");
+
