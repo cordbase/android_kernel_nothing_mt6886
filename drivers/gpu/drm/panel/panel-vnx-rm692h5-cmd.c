@@ -1381,45 +1381,6 @@ err:
 	return size;
 }
 
-static ssize_t hbm_mode_show(struct kobject* kodjs,struct kobj_attribute *attr,char *buf)
-{
-	int count = 0;
-	count = sprintf(buf, "hbm state: %d\n",g_ctx->hbm_stat);
-	return count;
-}
-
-static ssize_t hbm_mode_store(struct kobject *kobj, struct kobj_attribute *attr,const char *buf, size_t count)
-{
-	int ret;
-	unsigned int state;
-	unsigned char val1, val2;
-	static unsigned int display_bl_now = 0;
-
-	ret = kstrtouint(buf, 10, &state);
-	if (ret < 0) {
-		goto err;
-	}
-	printk("[%s]  hbm state:%d\n", __func__, state);
-
-	if (state) {
-		if (g_ctx->hbm_stat)
-			goto err;
-		display_bl_now = get_lcm_bl_val();
-		g_ctx->hbm_stat = true;
-		lcm_set_bk(0x0F, 0xF0);
-	} else {
-		if (!g_ctx->hbm_stat)
-			goto err;
-		g_ctx->hbm_stat = false;
-		val1 = (display_bl_now>>8)&0xf;
-		val2 = (display_bl_now)&0xff;
-		lcm_set_bk(val1, val2);
-	}
-
-err:
-	return count;
-}
-
 static ssize_t brightness_sync_show(struct kobject* kodjs,struct kobj_attribute *attr,char *buf)
 {
 	return sprintf(buf, "need brightness sync: %d\n", need_brightness_sync);
@@ -1436,6 +1397,31 @@ static ssize_t brightness_sync_store(struct kobject *kobj, struct kobj_attribute
 err:
 	return count;
 }
+
+static ssize_t udfps_hbm_mode_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t count) {
+    struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+    struct lcm *ctx = mipi_dsi_get_drvdata(dsi);
+    bool hbm_on;
+
+    if (kstrtobool(buf, &hbm_on) < 0)
+        return -EINVAL;
+
+    if (hbm_on) {
+        // Send the confirmed ON command for local UDFPS HBM
+        lcm_dcs_write_seq(ctx, 0x53, 0x2C);
+        pr_info("[UDFPS] Local HBM Enabled (0x53, 0x2C)\n");
+    } else {
+        // Send the confirmed OFF command to restore normal state
+        lcm_dcs_write_seq(ctx, 0x53, 0x20);
+        pr_info("[UDFPS] Local HBM Disabled (0x53, 0x20)\n");
+    }
+
+    return count;
+}
+
+static DEVICE_ATTR_WO(udfps_hbm_mode);
+
 static ssize_t ui_status_show(struct kobject* kodjs,struct kobj_attribute *attr,char *buf)
 {
 	return sprintf(buf, "ui status: %d\n",mtk_panel_get_ui_status());
@@ -1511,18 +1497,17 @@ int sys_node_init(void)
 		return -ENOMEM;
 	}
 
-	ret = sysfs_create_file(kobj, &hbm_mode_attr.attr);
-	if (ret < 0) {
-		printk("[%s] sysfs_create_group failed\n",__func__);
-		return -1;
-	}
-
 	ret = sysfs_create_file(kobj, &brightness_sync_attr.attr);
 	if (ret < 0) {
 		printk("[%s] sysfs_create_group failed\n",__func__);
 		return -1;
 	}
-
+    
+	ret = device_create_file(dev, &dev_attr_udfps_hbm_mode);
+	if (ret) {
+		pr_err("failed to create udfps_hbm_mode sysfs node\n");
+	}
+	
 	ret = sysfs_create_file(kobj, &ui_status_attr.attr);
 	if (ret < 0) {
 		printk("[%s] sysfs_create_group ui_status failed\n",__func__);
@@ -1704,3 +1689,4 @@ module_exit(rm692h5_lcm_driver_exit);
 MODULE_AUTHOR("Yi-Lun Wang <Yi-Lun.Wang@mediatek.com>");
 MODULE_DESCRIPTION("rm692h5 VNX CMD LCD Panel Driver");
 MODULE_LICENSE("GPL v2");
+
