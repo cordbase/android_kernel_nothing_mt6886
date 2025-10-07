@@ -842,6 +842,28 @@ static int panel_hbm_set_cmdq(struct drm_panel *panel, void *dsi,
 	return 0;
 }
 
+static int panel_hbm_fp_set_cmdq(struct drm_panel *panel, void *dsi,
+                                  dcs_write_gce cb, void *handle, bool en)
+{
+    struct lcm *ctx = panel_to_lcm(panel);
+
+    // Command to turn fingerprint HBM ON
+    char hbm_fp_on_cmd[] = {0x53, 0x2C};
+
+    // Command to turn fingerprint HBM OFF (restore default state)
+    char hbm_fp_off_cmd[] = {0x53, 0x20};
+
+    if (!cb)
+        return -1;
+
+    if (en)
+        cb(dsi, handle, hbm_fp_on_cmd, ARRAY_SIZE(hbm_fp_on_cmd));
+    else
+        cb(dsi, handle, hbm_fp_off_cmd, ARRAY_SIZE(hbm_fp_off_cmd));
+
+    return 0;
+}
+
 static void panel_hbm_get_state(struct drm_panel *panel, bool *state)
 {
 	struct lcm *ctx = panel_to_lcm(panel);
@@ -1270,6 +1292,7 @@ static struct mtk_panel_funcs ext_funcs = {
 	.ata_check = panel_ata_check,
 	.hbm_set_cmdq = panel_hbm_set_cmdq,
 	.hbm_get_state = panel_hbm_get_state,
+    .hbm_fp_set_cmdq = panel_hbm_fp_set_cmdq
 	.get_virtual_heigh = lcm_get_virtual_heigh,
 	.get_virtual_width = lcm_get_virtual_width,
 	.ext_param_set = mtk_panel_ext_param_set,
@@ -1800,3 +1823,4 @@ module_exit(rm692h5_boe_rm_lcm_driver_exit);
 MODULE_AUTHOR("Yi-Lun Wang <Yi-Lun.Wang@mediatek.com>");
 MODULE_DESCRIPTION("rm692h5 BOE RM CMD LCD Panel Driver");
 MODULE_LICENSE("GPL v2");
+
